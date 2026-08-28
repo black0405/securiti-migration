@@ -19,9 +19,9 @@ import requests
 
 # --- fill these in ---
 BASE = "https://app.securiti.ai"   # your tenant URL, no trailing slash
-TENANT = ""                        # X-TIDENT header value
-CLIENT_ID = ""
-CLIENT_SECRET = ""
+TENANT = ""                        # X-TIDENT: Settings > General > Basic Information
+CLIENT_ID = ""                     # API key (Settings > Access Management > API Keys)
+CLIENT_SECRET = ""                 # its secret
 # ---------------------
 
 if not (TENANT and CLIENT_ID and CLIENT_SECRET):
@@ -35,14 +35,22 @@ session.headers["X-TIDENT"] = TENANT
 
 
 def authenticate():
-    r = session.get(
-        f"{BASE}/core/v1/oauth/get_access_token",
-        headers={"Authorization": f"apikey {CLIENT_ID}:{CLIENT_SECRET}"},
-        timeout=30,
-    )
-    r.raise_for_status()
-    token = r.json()["access_token"]
-    session.headers["Authorization"] = f"oauth {token}"
+    """OAuth token exchange if available, else API-key-pair header on every call."""
+    apikey_header = f"apikey {CLIENT_ID}:{CLIENT_SECRET}"
+    try:
+        r = session.get(
+            f"{BASE}/core/v1/oauth/get_access_token",
+            headers={"Authorization": apikey_header},
+            timeout=30,
+        )
+        if r.status_code == 200 and "access_token" in r.json():
+            session.headers["Authorization"] = f"oauth {r.json()['access_token']}"
+            print("auth: oauth token")
+            return
+    except (requests.RequestException, ValueError):
+        pass
+    session.headers["Authorization"] = apikey_header
+    print("auth: api key pair")
 
 
 def call(method, path, json_body=None, ok_statuses=(200,)):
