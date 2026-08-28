@@ -89,11 +89,21 @@ def done(relpath):
     return (OUT / relpath).exists()
 
 
-def fetch_json(relpath, method, path, json_body=None):
-    """Fetch one endpoint into one file unless already saved. Returns data or None."""
+def fetch_json(relpath, method, path, json_body=None, optional=False):
+    """Fetch one endpoint into one file unless already saved. Returns data or None.
+
+    optional=True: a 4xx from this endpoint is expected for some records
+    (e.g. applicable_steps on non-sequential DSRs) — log and move on.
+    """
     if done(relpath):
         return json.loads((OUT / relpath).read_text(encoding="utf-8"))
-    r = call(method, path, json_body)
+    try:
+        r = call(method, path, json_body)
+    except RuntimeError as e:
+        if not optional:
+            raise
+        print(f"skip {path}: {str(e)[:120]}")
+        return None
     if r is None:
         return None
     data = r.json()
@@ -225,7 +235,8 @@ def phase_tickets():
         fetch_json(f"tickets/{tid}/detail.json", "GET", f"/privaci/v1/admin/dsr/tickets/{tid}")
         fetch_json(f"tickets/{tid}/owners.json", "GET", f"/privaci/v1/admin/dsr/ticket/{tid}/owners")
         fetch_json(f"tickets/{tid}/applicable_steps.json", "GET",
-                   f"/privaci/v1/admin/dsr/tickets/{tid}/applicable_steps")
+                   f"/privaci/v1/admin/dsr/tickets/{tid}/applicable_steps",
+                   optional=True)
 
 
 def phase_subtasks():
@@ -247,9 +258,11 @@ def phase_subtasks():
 def phase_messages():
     for tid in ticket_ids():
         fetch_json(f"tickets/{tid}/channels.json", "GET",
-                   f"/privaci/v1/admin/dsr/tickets/all_messaging_channels/{tid}")
+                   f"/privaci/v1/admin/dsr/tickets/all_messaging_channels/{tid}",
+                   optional=True)
         fetch_json(f"tickets/{tid}/messages.json", "GET",
-                   f"/privaci/v1/admin/dsr/ticket/{tid}/messages/")
+                   f"/privaci/v1/admin/dsr/ticket/{tid}/messages/",
+                   optional=True)
 
 
 def phase_audit():
@@ -257,8 +270,12 @@ def phase_audit():
         rel = f"tickets/{tid}/audit_export_response.json"
         if done(rel):
             continue
-        r = call("POST", f"/privaci/v1/admin/dsr/ticket/{tid}/export",
-                 {"include_data_subject": True, "include_owner_info": True, "format": "csv"})
+        try:
+            r = call("POST", f"/privaci/v1/admin/dsr/ticket/{tid}/export",
+                     {"include_data_subject": True, "include_owner_info": True, "format": "csv"})
+        except RuntimeError as e:
+            print(f"skip audit export {tid}: {str(e)[:120]}")
+            continue
         if r is None:
             print(f"audit export unavailable for ticket {tid}")
             continue
@@ -272,14 +289,19 @@ def phase_attachments():
         rel = f"tickets/{tid}/attachments_initiated.json"
         if done(rel):
             continue
-        r = call("POST", f"/privaci/v1/admin/dsr/tickets/{tid}/download/attachments")
+        try:
+            r = call("POST", f"/privaci/v1/admin/dsr/tickets/{tid}/download/attachments")
+        except RuntimeError as e:
+            print(f"skip attachments {tid}: {str(e)[:120]}")
+            continue
         if r is None:
             print(f"attachments unavailable for ticket {tid}")
             continue
         save(rel, r.json())
         # published report listing (read-only browse)
         fetch_json(f"tickets/{tid}/report_files.json", "POST",
-                   f"/privaci/v1/admin/dsr/tickets/{tid}/browse", {"item_prefix": "/"})
+                   f"/privaci/v1/admin/dsr/tickets/{tid}/browse", {"item_prefix": "/"},
+                   optional=True)
 
 
 PHASES = {
