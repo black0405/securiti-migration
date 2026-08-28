@@ -24,6 +24,7 @@ CLIENT_ID = ""                     # API key (Settings > Access Management > API
 CLIENT_SECRET = ""                 # its secret
 # ---------------------
 
+BASE = BASE.rstrip("/")
 if not (TENANT and CLIENT_ID and CLIENT_SECRET):
     sys.exit("fill in TENANT, CLIENT_ID, CLIENT_SECRET at top of extract_securiti.py")
 
