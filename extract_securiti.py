@@ -127,8 +127,11 @@ def reporting_query(relpath, ref, source, fields=("id",), extra=None):
         if r is None:
             print(f"{ref}: unavailable, saving what we have")
             break
-        data = r.json().get("data") or {}
-        page = data.get("items") or data.get("rows") or data.get("data") or []
+        data = r.json().get("data") or []
+        if isinstance(data, list):
+            page = data
+        else:
+            page = data.get("items") or data.get("rows") or []
         if isinstance(page, dict):
             page = [page]
         rows.extend(page)
