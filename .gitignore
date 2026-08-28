@@ -1,0 +1,4 @@
+export/
+doc_extracted.txt
+*.docx
+__pycache__/
