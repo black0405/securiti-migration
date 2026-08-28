@@ -101,7 +101,12 @@ def fetch_json(relpath, method, path, json_body=None):
     return data
 
 
-def reporting_query(relpath, ref, source, extra=None):
+TICKET_FIELDS = ["id", "title", "status", "request_type", "first_name",
+                 "last_name", "email", "created_at", "modified_at", "deadline",
+                 "form_id", "org_unit_id", "country", "state", "request_id"]
+
+
+def reporting_query(relpath, ref, source, fields=("id",), extra=None):
     """Paginated read-only reporting query. Saves combined rows, returns them."""
     if done(relpath):
         return json.loads((OUT / relpath).read_text(encoding="utf-8"))
@@ -111,6 +116,7 @@ def reporting_query(relpath, ref, source, extra=None):
             "source": source,
             "response_config": {"format": 1},
             "skip_cache": True,
+            "fields": [{"name": f} for f in fields],
             "order_by": ["-id"],
             "pagination": {"type": "limit-offset", "offset": offset,
                            "limit": PAGE_SIZE, "omit_total": True},
@@ -180,12 +186,25 @@ def phase_forms():
 
 
 def phase_lists():
-    reporting_query("lists/tickets.json", "getListOfTickets", "dsr_ticket")
-    reporting_query("lists/request_types.json", "getListOfRequestTypes", "dsr_request_type")
-    reporting_query("lists/task_templates.json", "getListOfTaskTemplates", "dsr_task_template")
-    reporting_query("lists/regulations.json", "getRegulations", "dsr_regulation")
-    reporting_query("lists/supplemental_forms.json", "getListOfSupplementalForms",
-                    "dsr_supplemental_form")
+    reporting_query("lists/tickets.json", "getListOfTickets", "dsr_ticket",
+                    fields=TICKET_FIELDS)
+    # id-only enumeration; full detail comes from the per-ID GET endpoints below
+    for relpath, ref, source, detail_rel, detail_path in [
+        ("lists/request_types.json", "getListOfRequestTypes", "dsr_request_type",
+         "request_types/{id}.json", "/privaci/v1/admin/dsr/request_type/{id}"),
+        ("lists/task_templates.json", "getListOfTaskTemplates", "dsr_task_template",
+         "task_templates/{id}.json", "/privaci/v1/admin/dsr/task_template/{id}/get"),
+        ("lists/regulations.json", "getRegulations", "dsr_regulation",
+         "regulations/{id}.json", "/privaci/v1/admin/dsr/regulations/{id}/get"),
+        ("lists/supplemental_forms.json", "getListOfSupplementalForms", "dsr_supplemental_form",
+         "supplemental_forms/{id}.json", "/privaci/v1/admin/dsr/supplemental_forms/{id}/get"),
+    ]:
+        rows = reporting_query(relpath, ref, source) or []
+        for row in rows:
+            rid = row.get("id") if isinstance(row, dict) else None
+            if rid is None:
+                continue
+            fetch_json(detail_rel.format(id=rid), "GET", detail_path.format(id=rid))
 
 
 def ticket_ids():
