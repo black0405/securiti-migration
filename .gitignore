@@ -2,3 +2,4 @@ export/
 doc_extracted.txt
 *.docx
 __pycache__/
+config_local.py

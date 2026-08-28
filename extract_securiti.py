@@ -17,16 +17,16 @@ from pathlib import Path
 
 import requests
 
-# --- fill these in ---
-BASE = "https://app.securiti.ai"   # your tenant URL, no trailing slash
-TENANT = ""                        # X-TIDENT: Settings > General > Basic Information
-CLIENT_ID = ""                     # API key (Settings > Access Management > API Keys)
-CLIENT_SECRET = ""                 # its secret
-# ---------------------
+# credentials live in config_local.py (gitignored) so git pull never touches them
+try:
+    from config_local import BASE, TENANT, CLIENT_ID, CLIENT_SECRET
+except ImportError:
+    sys.exit("create config_local.py next to this script — copy config_local.example.py "
+             "and fill in your values")
 
 BASE = BASE.rstrip("/")
 if not (TENANT and CLIENT_ID and CLIENT_SECRET):
-    sys.exit("fill in TENANT, CLIENT_ID, CLIENT_SECRET at top of extract_securiti.py")
+    sys.exit("fill in TENANT, CLIENT_ID, CLIENT_SECRET in config_local.py")
 
 OUT = Path(__file__).parent / "export"
 PAGE_SIZE = 100
