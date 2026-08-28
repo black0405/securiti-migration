@@ -30,6 +30,7 @@ if not (TENANT and CLIENT_ID and CLIENT_SECRET):
 
 OUT = Path(__file__).parent / "export"
 PAGE_SIZE = 100
+SKIPPED_403 = []
 
 session = requests.Session()
 session.headers["X-TIDENT"] = TENANT
@@ -64,6 +65,10 @@ def call(method, path, json_body=None, ok_statuses=(200,)):
             continue
         if r.status_code == 404:
             return None
+        if r.status_code == 403:
+            print(f"403  {path} (no permission, skipped)")
+            SKIPPED_403.append(path)
+            return None
         if r.status_code == 429 or r.status_code >= 500:
             time.sleep(2 ** attempt)
             continue
@@ -90,7 +95,6 @@ def fetch_json(relpath, method, path, json_body=None):
         return json.loads((OUT / relpath).read_text(encoding="utf-8"))
     r = call(method, path, json_body)
     if r is None:
-        print(f"404  {path} (skipped)")
         return None
     data = r.json()
     save(relpath, data)
@@ -114,6 +118,9 @@ def reporting_query(relpath, ref, source, extra=None):
         if extra:
             body.update(extra)
         r = call("POST", f"/reporting/v1/sources/query?ref={ref}", body)
+        if r is None:
+            print(f"{ref}: unavailable, saving what we have")
+            break
         data = r.json().get("data") or {}
         page = data.get("items") or data.get("rows") or data.get("data") or []
         if isinstance(page, dict):
@@ -231,7 +238,7 @@ def phase_audit():
         r = call("POST", f"/privaci/v1/admin/dsr/ticket/{tid}/export",
                  {"include_data_subject": True, "include_owner_info": True, "format": "csv"})
         if r is None:
-            print(f"404  audit export ticket {tid}")
+            print(f"audit export unavailable for ticket {tid}")
             continue
         save(rel, r.json() if "json" in r.headers.get("content-type", "") else {"raw": r.text[:2000]})
 
@@ -245,7 +252,7 @@ def phase_attachments():
             continue
         r = call("POST", f"/privaci/v1/admin/dsr/tickets/{tid}/download/attachments")
         if r is None:
-            print(f"404  attachments ticket {tid}")
+            print(f"attachments unavailable for ticket {tid}")
             continue
         save(rel, r.json())
         # published report listing (read-only browse)
@@ -277,6 +284,11 @@ def main():
     for name in wanted:
         print(f"--- phase: {name}")
         PHASES[name]()
+    if SKIPPED_403:
+        print("\nSkipped (missing RBAC permission on the API credential's user):")
+        for p in sorted(set(SKIPPED_403)):
+            print(f"  {p}")
+        print("Grant read permissions and rerun; already-saved files are not refetched.")
     print("done")
 
 
